@@ -21,7 +21,7 @@ class Auth:
     """Google Project Credentials"""
     CLIENT_ID = None
     CLIENT_SECRET = None
-    REDIRECT_URI = 'http://localhost:5000/gCallback'
+    REDIRECT_URI = 'http://{0}/gCallback'
     AUTH_URI = 'https://accounts.google.com/o/oauth2/auth'
     TOKEN_URI = 'https://www.googleapis.com/oauth2/v4/token'
     USER_INFO = 'https://www.googleapis.com/userinfo/v2/me'
@@ -49,12 +49,15 @@ config = {
 }
 
 
-def configure_app(client_id, client_secret, configname='dev', app_to_configure=None):
+def configure_app(client_id, client_secret, base_domain, configname='dev', app_to_configure=None):
     Auth.CLIENT_ID = client_id
     Auth.CLIENT_SECRET = client_secret
+    Auth.REDIRECT_URI = Auth.REDIRECT_URI.format(base_domain)
     if not app_to_configure:
         app_to_configure = Flask(__name__)
+
     app_to_configure.config.from_object(config[configname])
+
     login_manager = LoginManager(app_to_configure)
     login_manager.login_view = "login"
     login_manager.session_protection = "strong"
@@ -78,7 +81,6 @@ def load_user(user_id):
         google = get_google_auth()
         resp = google.refresh_token(Auth.TOKEN_URI, refresh_token=access_token['refresh_token'],
                                     client_secret=Auth.CLIENT_SECRET, client_id=Auth.CLIENT_ID)
-        print("extend response", resp)
         return User(json.dumps(resp))
     google = get_google_auth(token=json.loads(user_id))
     resp = google.get('https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=' + urllib.quote_plus(
@@ -132,7 +134,6 @@ def callback():
                 Auth.TOKEN_URI,
                 client_secret=Auth.CLIENT_SECRET,
                 authorization_response=request.url)
-            print('token', token)
         except HTTPError:
             return 'HTTPError occurred.'
         google = get_google_auth(token=token)
