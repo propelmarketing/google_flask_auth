@@ -14,7 +14,7 @@ from setuptools import find_packages, setup, Command
 # Package meta-data.
 NAME = 'google_flask_auth'
 DESCRIPTION = 'small project to allow re-usable google oauth'
-URL = 'https://github.com/me/myproject'
+URL = 'https://github.com/propelmarketing/google_flask_auth'
 EMAIL = 'bryan@thrivehive.com'
 AUTHOR = 'Bryan Pedlar'
 
