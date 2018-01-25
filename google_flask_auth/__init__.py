@@ -24,10 +24,10 @@ class Auth:
     REDIRECT_URI = 'http://{0}/gCallback'
     AUTH_URI = 'https://accounts.google.com/o/oauth2/auth'
     TOKEN_URI = 'https://www.googleapis.com/oauth2/v4/token'
-    USER_INFO = 'https://www.googleapis.com/userinfo/v2/me'
+    USER_INFO = 'https://www.googleapis.com/oauth2/v2/userinfo'
     TOKEN_INFO_URI = 'https://www.googleapis.com/oauth2/v3/tokeninfo?access_token='
     SCOPE = ['profile', 'email']
-
+    LIMIT_DOMAIN = None
 
 
 class Config:
@@ -35,12 +35,12 @@ class Config:
     SECRET_KEY = os.environ.get("SECRET_KEY") or "somethingsecret"
 
 
-
-
-def configure_app(client_id, client_secret, base_domain, app_to_configure=None):
+def configure_app(client_id, client_secret, base_domain, limit_domain=None, app_to_configure=None):
     Auth.CLIENT_ID = client_id
     Auth.CLIENT_SECRET = client_secret
     Auth.REDIRECT_URI = Auth.REDIRECT_URI.format(base_domain)
+    if limit_domain:
+        Auth.LIMIT_DOMAIN = limit_domain
     if not app_to_configure:
         app_to_configure = Flask(__name__)
 
@@ -73,8 +73,12 @@ def load_user(user_id):
     google = get_google_auth(token=json.loads(user_id))
     resp = google.get(Auth.TOKEN_INFO_URI + urllib.quote_plus(
         access_token['access_token']))
-    if 'email' in resp.json():
-        return User(user_id)
+    response_object = resp.json()
+    if 'email' in response_object:
+        user = User(user_id)
+        user.email = response_object['email']
+        if not Auth.LIMIT_DOMAIN or Auth.LIMIT_DOMAIN in user.email:
+            return User(user_id)
     return None
 
 
@@ -101,8 +105,9 @@ def login():
         return redirect(url_for('index'))
     google = get_google_auth()
     auth_url, state = google.authorization_url(
-        Auth.AUTH_URI, access_type='offline', hd='thrivehive.com', prompt='consent')
+        Auth.AUTH_URI, access_type='offline', hd=Auth.LIMIT_DOMAIN, prompt='consent')
     session['oauth_state'] = state
+    print(auth_url)
     return redirect(auth_url)
 
 
@@ -122,18 +127,20 @@ def callback():
                 Auth.TOKEN_URI,
                 client_secret=Auth.CLIENT_SECRET,
                 authorization_response=request.url)
+            print(token)
+            resp = google.get(Auth.TOKEN_INFO_URI + urllib.quote_plus(
+                token['access_token']))
+            print(resp.json())
         except HTTPError:
             return 'HTTPError occurred.'
         google = get_google_auth(token=token)
         resp = google.get(Auth.USER_INFO)
         if resp.status_code == 200:
             user_data = resp.json()
-            email = user_data['email']
-            user = None
-            if user is None:
-                user = User(json.dumps(token))
-                user.email = email
-            login_user(user)
+            user = User(json.dumps(token))
+            user.email = user_data['email']
+            if not Auth.LIMIT_DOMAIN or Auth.LIMIT_DOMAIN in user.email:
+                login_user(user)
             return redirect(url_for('index'))
         return 'Could not fetch your information.'
 
