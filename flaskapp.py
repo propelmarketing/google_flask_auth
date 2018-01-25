@@ -13,4 +13,4 @@ app, login_manager = configure_app(os.environ.get('GOOGLE_CLIENT_ID'),
 def index():
     return 'foo'
 
-app.run(threaded=True)
+app.run(threaded=True, debug=True)

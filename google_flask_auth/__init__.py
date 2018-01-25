@@ -25,38 +25,26 @@ class Auth:
     AUTH_URI = 'https://accounts.google.com/o/oauth2/auth'
     TOKEN_URI = 'https://www.googleapis.com/oauth2/v4/token'
     USER_INFO = 'https://www.googleapis.com/userinfo/v2/me'
+    TOKEN_INFO_URI = 'https://www.googleapis.com/oauth2/v3/tokeninfo?access_token='
     SCOPE = ['profile', 'email']
+
 
 
 class Config:
     """Base config"""
-    APP_NAME = "Test Google Login"
     SECRET_KEY = os.environ.get("SECRET_KEY") or "somethingsecret"
 
 
-class DevConfig(Config):
-    """Dev config"""
-    DEBUG = True
 
 
-class ProdConfig(Config):
-    """Production config"""
-    DEBUG = False
-
-
-config = {
-    "dev": DevConfig,
-}
-
-
-def configure_app(client_id, client_secret, base_domain, configname='dev', app_to_configure=None):
+def configure_app(client_id, client_secret, base_domain, app_to_configure=None):
     Auth.CLIENT_ID = client_id
     Auth.CLIENT_SECRET = client_secret
     Auth.REDIRECT_URI = Auth.REDIRECT_URI.format(base_domain)
     if not app_to_configure:
         app_to_configure = Flask(__name__)
 
-    app_to_configure.config.from_object(config[configname])
+    app_to_configure.config.from_object(Config)
 
     login_manager = LoginManager(app_to_configure)
     login_manager.login_view = "login"
@@ -83,7 +71,7 @@ def load_user(user_id):
                                     client_secret=Auth.CLIENT_SECRET, client_id=Auth.CLIENT_ID)
         return User(json.dumps(resp))
     google = get_google_auth(token=json.loads(user_id))
-    resp = google.get('https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=' + urllib.quote_plus(
+    resp = google.get(Auth.TOKEN_INFO_URI + urllib.quote_plus(
         access_token['access_token']))
     if 'email' in resp.json():
         return User(user_id)
