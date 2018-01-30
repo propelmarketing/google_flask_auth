@@ -9,6 +9,8 @@ from flask_login import LoginManager, login_required, login_user, \
     logout_user, current_user, UserMixin
 from requests_oauthlib import OAuth2Session
 from requests.exceptions import HTTPError
+from flask import request
+
 
 basedir = os.path.abspath(os.path.dirname(__file__))
 
@@ -28,6 +30,7 @@ class Auth:
     TOKEN_INFO_URI = 'https://www.googleapis.com/oauth2/v3/tokeninfo?access_token='
     SCOPE = ['profile', 'email']
     LIMIT_DOMAIN = None
+    AUTH_KEYS = 'myfile'
 
 
 class Config:
@@ -45,6 +48,9 @@ def configure_app(client_id, client_secret, base_domain, limit_domain=None, app_
         app_to_configure = Flask(__name__)
 
     app_to_configure.config.from_object(Config)
+
+
+    #app_to_configure.before_request_funcs.setdefault(None, []).append(foo)
 
     login_manager = LoginManager(app_to_configure)
     login_manager.login_view = "login"
@@ -64,6 +70,11 @@ class User(UserMixin):
 
 
 def load_user(user_id):
+    if 'Authorization' in request.headers:
+        with open(Auth.AUTH_KEYS, 'a+') as f:
+            auth_keys = f.readlines()
+            if request.headers['Authorization'] in auth_keys:
+                return User(request.headers['Authorization'])
     access_token = json.loads(user_id)
     if access_token['expires_at'] < time.time():
         google = get_google_auth()
