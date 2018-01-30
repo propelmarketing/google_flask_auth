@@ -4,13 +4,14 @@ import time
 import urllib
 
 from flask import Flask, url_for, redirect, \
-    session, request
+    session
+from flask_jwt import JWT, _jwt_required, current_identity
 from flask_login import LoginManager, login_required, login_user, \
     logout_user, current_user, UserMixin
 from requests_oauthlib import OAuth2Session
 from requests.exceptions import HTTPError
 from flask import request
-
+from werkzeug.security import safe_str_cmp
 
 basedir = os.path.abspath(os.path.dirname(__file__))
 
@@ -30,7 +31,6 @@ class Auth:
     TOKEN_INFO_URI = 'https://www.googleapis.com/oauth2/v3/tokeninfo?access_token='
     SCOPE = ['profile', 'email']
     LIMIT_DOMAIN = None
-    AUTH_KEYS = 'myfile'
 
 
 class Config:
@@ -49,13 +49,16 @@ def configure_app(client_id, client_secret, base_domain, limit_domain=None, app_
 
     app_to_configure.config.from_object(Config)
 
+    # app_to_configure.before_request_funcs.setdefault(None, []).append(foo)
 
-    #app_to_configure.before_request_funcs.setdefault(None, []).append(foo)
-
+    Auth.APP = app_to_configure
     login_manager = LoginManager(app_to_configure)
     login_manager.login_view = "login"
     login_manager.session_protection = "strong"
     login_manager.user_callback = load_user
+
+    jwt = JWT(app_to_configure, authenticate, identity)
+    Auth.JWT = jwt
 
     app_to_configure.add_url_rule("/login", "login", login)
     app_to_configure.add_url_rule("/logout", "logout", logout)
@@ -65,16 +68,45 @@ def configure_app(client_id, client_secret, base_domain, limit_domain=None, app_
 
 
 class User(UserMixin):
-    def __init__(self, id):
+    def __init__(self, id, username=None, password=None):
+        self.password = password
+        self.username = username
         self.id = id
 
 
+def authenticate(username, password):
+    user = username_table.get(username, None)
+    if user and safe_str_cmp(user.password.encode('utf-8'), password.encode('utf-8')):
+        return user
+
+
+def identity(payload):
+    user_id = payload['identity']
+    return userid_table.get(user_id, None)
+
+
+#users = [
+#    User(1, 'user1', 'abcxyz'),
+#    User(2, 'user2', 'abcxyz'),
+#]
+
+with open('myfile', 'a+') as f:
+    lines = f.readlines()
+    users = []
+    for line in lines:
+        elements = line.split(' ')
+        users.append(User(*elements))
+
+username_table = {u.username: u for u in users}
+userid_table = {u.id: u for u in users}
+
+
 def load_user(user_id):
-    if 'Authorization' in request.headers:
-        with open(Auth.AUTH_KEYS, 'a+') as f:
-            auth_keys = f.readlines()
-            if request.headers['Authorization'] in auth_keys:
-                return User(request.headers['Authorization'])
+    token = Auth.JWT.request_callback()
+    if token:
+        _jwt_required(Auth.APP.config['JWT_DEFAULT_REALM'])
+        return current_identity
+
     access_token = json.loads(user_id)
     if access_token['expires_at'] < time.time():
         google = get_google_auth()
@@ -118,7 +150,6 @@ def login():
     auth_url, state = google.authorization_url(
         Auth.AUTH_URI, access_type='offline', hd=Auth.LIMIT_DOMAIN, prompt='consent')
     session['oauth_state'] = state
-    print(auth_url)
     return redirect(auth_url)
 
 
@@ -138,10 +169,8 @@ def callback():
                 Auth.TOKEN_URI,
                 client_secret=Auth.CLIENT_SECRET,
                 authorization_response=request.url)
-            print(token)
             resp = google.get(Auth.TOKEN_INFO_URI + urllib.quote_plus(
                 token['access_token']))
-            print(resp.json())
         except HTTPError:
             return 'HTTPError occurred.'
         google = get_google_auth(token=token)
